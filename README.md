@@ -1,4 +1,4 @@
-# 📡 P2P File Transfer & Remote Desktop v2.0
+# P2P File Transfer & Remote Desktop v2.0
 
 ![P2P Logo](logo.png)
 
