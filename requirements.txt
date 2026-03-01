@@ -1,0 +1,7 @@
+# Dependencias para la función de Control de Escritorio Remoto (V2.0)
+# Nota: La función base de envío/recepción de archivos utiliza únicamente
+# la librería estándar de Python y no requiere instalar estos paquetes.
+
+mss        # Captura de pantalla iterativa a alta velocidad
+Pillow     # Compresión ultrarrápida JPEG y manipulación de frames
+pyautogui  # Simulación y envío de eventos nativos de teclado/mouse
