@@ -1064,6 +1064,11 @@ class ControllerViewer:
         from PIL import Image, ImageTk
         import io
         
+        # Guardar referencias para que los otros métodos puedan usarlas
+        self._Image = Image
+        self._ImageTk = ImageTk
+        self._io = io
+        
         # Recibir resolución inicial
         try:
             res_len_data = self._recv_exact(self.stream_sock, 4)
@@ -1125,8 +1130,8 @@ class ControllerViewer:
     
     def _receive_frames(self):
         """Hilo que recibe frames JPEG del agente remoto."""
-        from PIL import Image
-        import io
+        Image = self._Image
+        io = self._io
         
         while not self._stop.is_set():
             try:
@@ -1156,7 +1161,7 @@ class ControllerViewer:
             self.root.destroy()
             return
         
-        from PIL import ImageTk
+        from PIL import Image, ImageTk
         
         with self._frame_lock:
             img = self._frame_buffer
@@ -1167,7 +1172,7 @@ class ControllerViewer:
             cw = self.canvas.winfo_width()
             ch = self.canvas.winfo_height()
             if cw > 1 and ch > 1:
-                img = img.resize((cw, ch), Image.NEAREST)
+                img = img.resize((cw, ch), Image.LANCZOS)
             
             self._photo = ImageTk.PhotoImage(img)
             self.canvas.delete("all")
@@ -1260,10 +1265,16 @@ class ControllerViewer:
         self._stop.set()
         try:
             self.stream_sock.close()
+        except Exception:
+            pass
+        try:
             self.event_sock.close()
         except Exception:
             pass
-        self.root.destroy()
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
 
 # ─── Control Remoto: Flujos Interactivos ─────────────────────────────
