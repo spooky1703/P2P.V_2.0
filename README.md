@@ -86,9 +86,9 @@ chmod +x build_mac.sh
 ```
 
 **Para compilar en Windows:**
-Solo haz doble click sobre el archivo o corre en la terminal:
+Solo corre el nuevo script de Python en la terminal:
 ```cmd
-build_windows.bat
+python build_windows.py
 ```
 
 ---
