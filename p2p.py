@@ -106,17 +106,34 @@ def is_compressed_file(filepath):
     return ext in COMPRESSED_EXTENSIONS
 
 
-def get_local_ip():
-    """Obtiene la IP local de la interfaz activa."""
+def get_all_local_ips():
+    """Obtiene todas las IPs locales (Wi-Fi, Ethernet, VPN, etc)."""
+    ips = set()
+    # 1. Intento principal (interfaz por defecto)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
-        s.connect(("10.254.254.254", 1))  # No envía datos realmente
+        s.connect(("10.254.254.254", 1))
         ip = s.getsockname()[0]
+        if not ip.startswith("127."):
+            ips.add(ip)
         s.close()
-        return ip
     except Exception:
-        return "127.0.0.1"
+        pass
+
+    # 2. Agregar el resto de interfaces (útil si la principal es Docker/VMware)
+    try:
+        for addrinfo in socket.getaddrinfo(socket.gethostname(), None):
+            ip = addrinfo[4][0]
+            if ":" not in ip and not ip.startswith("127."):  # Solo IPv4
+                ips.add(ip)
+    except Exception:
+        pass
+    
+    if not ips:
+        ips.add("127.0.0.1")
+        
+    return sorted(list(ips))
 
 
 def clear_screen():
@@ -335,11 +352,12 @@ class PeerDiscovery:
 
     def start_broadcasting(self):
         """Anuncia disponibilidad del receptor via UDP broadcast."""
-        local_ip = get_local_ip()
+        local_ips = get_all_local_ips()
+        ip_to_share = local_ips[0] if local_ips else "127.0.0.1"
         msg = json.dumps({
             "type": "P2P_READY",
             "name": self.name,
-            "ip": local_ip,
+            "ip": ip_to_share,
             "tcp_port": self.tcp_port
         }).encode()
 
@@ -370,7 +388,7 @@ class PeerDiscovery:
         sock.settimeout(0.5)
         sock.bind(("", self.udp_port))
 
-        local_ip = get_local_ip()
+        local_ips = get_all_local_ips()
         peers = {}  # dict {ip: peer_info} para no duplicar
         
         print_info(f"Escaneando red local... (aprox {scan_time}s)")
@@ -390,7 +408,7 @@ class PeerDiscovery:
                     info = json.loads(data.decode())
                     if info.get("type") == "P2P_READY":
                         peer_ip = info.get("ip", addr[0])
-                        if peer_ip != local_ip or addr[0] != local_ip:
+                        if peer_ip not in local_ips or addr[0] not in local_ips:
                             if peer_ip not in peers:
                                 peers[peer_ip] = {
                                     "ip": peer_ip,
@@ -640,9 +658,10 @@ def cmd_send(settings):
         return
 
     my_name = settings.name
-    local_ip = get_local_ip()
+    local_ips = get_all_local_ips()
+    ip_str = " | ".join(local_ips)
     print()
-    print_info(f"Tu IP: {Colors.bold(local_ip)} {Colors.dim(f'({my_name})')}")
+    print_info(f"Tus IPs: {Colors.bold(ip_str)} {Colors.dim(f'({my_name})')}")
     print_info(f"Fuente: {Colors.bold(str(source))}")
     print()
 
@@ -715,7 +734,8 @@ def cmd_send(settings):
     except socket.timeout:
         print_error("Timeout al conectar")
     except Exception as e:
-        print_error(f"Error: {e}")
+        print_error(f"Error al conectar: {e}")
+        print_info("⚠️ Si están en la misma red, revisa el Firewall de Windows/Mac.")
     finally:
         try:
             sock.close()
@@ -742,12 +762,14 @@ def cmd_receive(settings):
     
     dest_dir = settings.downloads_dir
     port = settings.port
-    local_ip = get_local_ip()
+    local_ips = get_all_local_ips()
+    ip_str = " | ".join(local_ips)
 
     my_name = settings.name
     print_info(f"Tu nombre: {Colors.bold(my_name)}")
-    print_info(f"Tu IP:     {Colors.bold(local_ip)}")
+    print_info(f"Tus IPs:   {Colors.white(Colors.bold(ip_str))}")
     print_info(f"Destino:   {Colors.bold(dest_dir)}")
+    print_info(f"⚠️ {Colors.dim('Asegúrate de conceder permisos de Firewall si el OS lo pide.')}")
     print()
 
     # Iniciar servidor TCP
@@ -770,7 +792,8 @@ def cmd_receive(settings):
     print_success("Listo para recibir")
     print(
         f"  {Colors.dim('Otros equipos en la misma red te encontrarán automáticamente.')}\n"
-        f"  {Colors.dim('Tu IP por si necesitan conectarse manualmente:')} {Colors.bold(local_ip)}\n"
+        f"  {Colors.dim('Si la conexión falla, asegúrate de que ambos usen la misma red Wi-Fi y')}\n"
+        f"  {Colors.dim('el Firewall no esté bloqueando Python/P2P.')}\n"
     )
     print(f"  {Colors.dim('Esperando conexión... (Ctrl+C para cancelar)')}")
 
@@ -1254,12 +1277,14 @@ def cmd_allow_control(settings):
         return
     
     port = REMOTE_PORT
-    local_ip = get_local_ip()
+    local_ips = get_all_local_ips()
+    ip_str = " | ".join(local_ips)
     my_name = settings.name
     
     print_info(f"Tu nombre: {Colors.bold(my_name)}")
-    print_info(f"Tu IP:     {Colors.bold(local_ip)}")
+    print_info(f"Tus IPs:   {Colors.white(Colors.bold(ip_str))}")
     print_warning("Otro usuario podrá ver y controlar tu pantalla")
+    print_info(f"⚠️ {Colors.dim('Importante: Autoriza las conexiones si el Firewall te pregunta.')}")
     print()
     
     # Servidor TCP para stream de control remoto
@@ -1439,7 +1464,10 @@ def cmd_control(settings):
         optimize_socket(sock)
     except (ConnectionRefusedError, socket.timeout, OSError) as e:
         print_error(f"No se pudo conectar: {e}")
-        print_info("Asegúrate de que el equipo tenga 'Permitir Control' activo")
+        print_info("Causas comunes:")
+        print_info(" 1. El equipo destino NO está en la misma red Wi-Fi.")
+        print_info(" 2. El Firewall de Windows o Mac del destino bloqueó la conexión.")
+        print_info(" 3. Usaste la IP incorrecta (prueba las otras IPs si aparecieron varias).")
         input(f"\n  {Colors.dim('[Enter] para volver...')} ")
         return
     
