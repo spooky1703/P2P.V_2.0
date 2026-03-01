@@ -82,6 +82,8 @@ class Colors:
     def dim(cls, t):     return cls._wrap("2", t)
     @classmethod
     def magenta(cls, t): return cls._wrap("35", t)
+    @classmethod
+    def white(cls, t):   return cls._wrap("37", t)
 
 Colors.init()
 
